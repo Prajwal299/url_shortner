@@ -1,0 +1,34 @@
+---
+- hosts: all
+  become: yes
+  tasks:
+    - name: Reset Kubernetes cluster
+      command: kubeadm reset --force
+      ignore_errors: yes
+    
+    - name: Remove .kube directory
+      file:
+        path: "{{ item }}/.kube"
+        state: absent
+      loop:
+        - /root
+        - /home/ubuntu
+      ignore_errors: yes
+    
+    - name: Remove CNI configuration
+      file:
+        path: /etc/cni/net.d
+        state: absent
+      ignore_errors: yes
+    
+    - name: Restart kubelet
+      systemd:
+        name: kubelet
+        state: restarted
+      ignore_errors: yes
+    
+    - name: Restart docker
+      systemd:
+        name: docker
+        state: restarted
+      ignore_errors: yes

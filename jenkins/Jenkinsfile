@@ -1,0 +1,32 @@
+pipeline {
+    agent any
+    environment {
+        AWS_REGION = 'ap-south-1'
+        ECR_API_URL = '934556830376.dkr.ecr.ap-south-1.amazonaws.com/url-shortener-api'
+        ECR_FRONTEND_URL = '934556830376.dkr.ecr.ap-south-1.amazonaws.com/url-shortener-frontend'
+        KUBE_CONFIG = credentials('kubeconfig')
+    }
+    stages {
+        stage('Build') {
+            steps {
+                sh 'docker build -t $ECR_API_URL:latest ./api'
+                sh 'docker build -t $ECR_FRONTEND_URL:latest ./frontend'
+            }
+        }
+        stage('Push') {
+            steps {
+                sh 'aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_API_URL'
+                sh 'docker push $ECR_API_URL:latest'
+                sh 'docker push $ECR_FRONTEND_URL:latest'
+            }
+        }
+        stage('Deploy') {
+            steps {
+                sh 'kubectl --kubeconfig=$KUBE_CONFIG apply -f k8s/api-deployment.yaml'
+                sh 'kubectl --kubeconfig=$KUBE_CONFIG apply -f k8s/frontend-deployment.yaml'
+                sh 'kubectl --kubeconfig=$KUBE_CONFIG rollout restart deployment/api -n url-shortener'
+                sh 'kubectl --kubeconfig=$KUBE_CONFIG rollout restart deployment/frontend -n url-shortener'
+            }
+        }
+    }
+}
