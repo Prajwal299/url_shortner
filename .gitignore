@@ -1,0 +1,39 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environment
+venv/
+.env
+*.env
+
+# Docker
+*.log
+*.pid
+*.sock
+docker-compose.override.yml
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.crash
+.terraform/
+.terraform.lock.hcl
+
+# Ansible
+*.retry
+
+# Kubernetes
+# (Keep YAML files, ignore kube configs or secrets if generated locally)
+.kube/
+*.secret.yaml
+
+# IDE / OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
