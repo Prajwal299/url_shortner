@@ -15,10 +15,10 @@ venv/
 docker-compose.override.yml
 
 # Terraform
+# Terraform
+.terraform/
 *.tfstate
 *.tfstate.*
-.crash
-.terraform/
 .terraform.lock.hcl
 
 # Ansible
