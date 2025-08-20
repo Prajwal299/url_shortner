@@ -7,25 +7,38 @@ pipeline {
         KUBE_CONFIG = credentials('kubeconfig')
     }
     stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main', credentialsId: 'github-ssh', url: 'git@github.com:Prajwal299/url_shortner.git'
+            }
+        }
         stage('Build') {
             steps {
-                sh 'docker build -t $ECR_API_URL:latest ./api'
-                sh 'docker build -t $ECR_FRONTEND_URL:latest ./frontend'
+                sh 'docker build -t :latest ./app'
+                sh 'docker build -t :latest ./frontend'
             }
         }
         stage('Push') {
             steps {
-                sh 'aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_API_URL'
-                sh 'docker push $ECR_API_URL:latest'
-                sh 'docker push $ECR_FRONTEND_URL:latest'
+                sh '''
+                aws ecr get-login-password --region  | docker login --username AWS --password-stdin 934556830376.dkr.ecr.ap-south-1.amazonaws.com
+                docker push :latest
+                docker push :latest
+                '''
             }
         }
         stage('Deploy') {
             steps {
-                sh 'kubectl --kubeconfig=$KUBE_CONFIG apply -f k8s/api-deployment.yaml'
-                sh 'kubectl --kubeconfig=$KUBE_CONFIG apply -f k8s/frontend-deployment.yaml'
-                sh 'kubectl --kubeconfig=$KUBE_CONFIG rollout restart deployment/api -n url-shortener'
-                sh 'kubectl --kubeconfig=$KUBE_CONFIG rollout restart deployment/frontend -n url-shortener'
+                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                    sh '''
+                    kubectl --kubeconfig= apply -f k8s/namespace.yaml
+                    kubectl --kubeconfig= apply -f k8s/mysql-deployment.yaml
+                    kubectl --kubeconfig= apply -f k8s/api-deployment.yaml
+                    kubectl --kubeconfig= apply -f k8s/frontend-deployment.yaml
+                    kubectl --kubeconfig= rollout restart deployment/api -n url-shortener
+                    kubectl --kubeconfig= rollout restart deployment/frontend -n url-shortener
+                    '''
+                }
             }
         }
     }
