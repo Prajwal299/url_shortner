@@ -11,7 +11,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main', credentialsId: 'github-ssh', url: 'git@github.com:Prajwal299/url_shortner.git'
+                git branch: 'main', credentialsId: 'git', url: 'git@github.com:Prajwal299/url_shortner.git'
             }
         }
         stage('Build Images') {
