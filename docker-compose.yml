@@ -1,27 +1,37 @@
-version: '3'
+version: '3.8'
 services:
-  api:
-    build: ./app
-    ports:
-      - "5000:5000"
-    environment:
-      DB_HOST: db
-      DB_USER: admin
-      DB_PASS: root
-    depends_on:
-      - db
-  frontend:
-    build: ./frontend
-    ports:
-      - "8080:80"
-  db:
+  mysql:
     image: mysql:8.0
+    volumes:
+      - /mysql-data:/var/lib/mysql
     environment:
       MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: urlshortener
       MYSQL_USER: admin
       MYSQL_PASSWORD: root
-      MYSQL_DATABASE: urlshortener
-    volumes:
-      - db-data:/var/lib/mysql
-volumes:
-  db-data:
+    ports:
+      - "3306:3306"
+    networks:
+      - app-network
+  api:
+    image: 934556830376.dkr.ecr.ap-south-1.amazonaws.com/url-shortener-api:latest
+    environment:
+      DB_HOST: mysql
+      DB_USER: admin
+      DB_PASS: root
+      DB_NAME: urlshortener
+    ports:
+      - "5000:5000"
+    depends_on:
+      - mysql
+    networks:
+      - app-network
+  frontend:
+    image: 934556830376.dkr.ecr.ap-south-1.amazonaws.com/url-shortener-frontend:latest
+    ports:
+      - "80:80"
+    networks:
+      - app-network
+networks:
+  app-network:
+    driver: bridge

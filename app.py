@@ -1,5 +1,4 @@
 from flask import Flask, request, redirect, jsonify
-from flask_cors import CORS
 import mysql.connector
 import hashlib
 import os
@@ -7,7 +6,6 @@ import logging
 import time
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "http://3.110.114.163"}})  # Allow frontend origin
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -24,6 +22,7 @@ def get_db_connection():
         logger.error(f"Database connection failed: {e}")
         raise
 
+# Initialize database with retries
 for attempt in range(5):
     try:
         conn = get_db_connection()
@@ -39,7 +38,7 @@ for attempt in range(5):
     except Exception as e:
         logger.error(f"Database initialization failed (attempt {attempt + 1}/5): {e}")
         if attempt < 4:
-            time.sleep(5)
+            time.sleep(5)  # Wait 5 seconds before retrying
         else:
             logger.error("Failed to initialize database after 5 attempts")
             raise

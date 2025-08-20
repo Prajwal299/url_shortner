@@ -1,10 +1,489 @@
 <!DOCTYPE html>
-<html>
-<head><title>URL Shortener</title></head>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bubble URL Shortener</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Animated Bubble Background */
+        .bubble-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .bubble {
+            position: absolute;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            animation: float 6s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% {
+                transform: translateY(0px) rotate(0deg);
+                opacity: 0.7;
+            }
+            50% {
+                transform: translateY(-20px) rotate(180deg);
+                opacity: 1;
+            }
+        }
+
+        .bubble:nth-child(1) {
+            width: 80px;
+            height: 80px;
+            left: 10%;
+            top: 20%;
+            animation-delay: 0s;
+            animation-duration: 8s;
+        }
+
+        .bubble:nth-child(2) {
+            width: 120px;
+            height: 120px;
+            left: 20%;
+            top: 60%;
+            animation-delay: 2s;
+            animation-duration: 10s;
+        }
+
+        .bubble:nth-child(3) {
+            width: 60px;
+            height: 60px;
+            left: 70%;
+            top: 30%;
+            animation-delay: 1s;
+            animation-duration: 7s;
+        }
+
+        .bubble:nth-child(4) {
+            width: 100px;
+            height: 100px;
+            left: 80%;
+            top: 70%;
+            animation-delay: 3s;
+            animation-duration: 9s;
+        }
+
+        .bubble:nth-child(5) {
+            width: 140px;
+            height: 140px;
+            left: 50%;
+            top: 10%;
+            animation-delay: 4s;
+            animation-duration: 11s;
+        }
+
+        .bubble:nth-child(6) {
+            width: 70px;
+            height: 70px;
+            left: 5%;
+            top: 80%;
+            animation-delay: 1.5s;
+            animation-duration: 6s;
+        }
+
+        .bubble:nth-child(7) {
+            width: 90px;
+            height: 90px;
+            left: 90%;
+            top: 20%;
+            animation-delay: 2.5s;
+            animation-duration: 8s;
+        }
+
+        .bubble:nth-child(8) {
+            width: 110px;
+            height: 110px;
+            left: 30%;
+            top: 90%;
+            animation-delay: 3.5s;
+            animation-duration: 9s;
+        }
+
+        /* Main Container */
+        .container {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 40px;
+            box-shadow: 0 25px 45px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 500px;
+            width: 90%;
+            z-index: 2;
+            position: relative;
+            animation: slideUp 0.8s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        h1 {
+            color: white;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            font-weight: 300;
+            letter-spacing: 2px;
+        }
+
+        .subtitle {
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 30px;
+            font-size: 1.1rem;
+        }
+
+        .input-group {
+            margin-bottom: 25px;
+            position: relative;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 15px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 50px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            outline: none;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        input[type="text"]::placeholder {
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        input[type="text"]:focus {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.02);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 50px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 20px rgba(238, 90, 36, 0.3);
+            margin: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 30px rgba(238, 90, 36, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(-1px);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .result-container {
+            margin-top: 30px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            display: none;
+            animation: fadeIn 0.5s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .result-url {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 15px;
+            border-radius: 10px;
+            color: white;
+            margin: 10px 0;
+            word-break: break-all;
+            font-family: 'Courier New', monospace;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .copy-btn {
+            background: linear-gradient(45deg, #00d2ff, #3a7bd5);
+            box-shadow: 0 10px 20px rgba(58, 123, 213, 0.3);
+        }
+
+        .copy-btn:hover {
+            box-shadow: 0 15px 30px rgba(58, 123, 213, 0.4);
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .success-message {
+            color: #2ecc71;
+            margin-top: 10px;
+            font-weight: 600;
+        }
+
+        .error-message {
+            color: #e74c3c;
+            margin-top: 10px;
+            font-weight: 600;
+        }
+
+        .floating-particles {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            z-index: 0;
+        }
+
+        .particle {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            animation: floatParticle 15s linear infinite;
+        }
+
+        @keyframes floatParticle {
+            from {
+                transform: translateY(100vh) rotate(0deg);
+                opacity: 0;
+            }
+            10% {
+                opacity: 1;
+            }
+            90% {
+                opacity: 1;
+            }
+            to {
+                transform: translateY(-100px) rotate(360deg);
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
 <body>
-    <input id="url" placeholder="Enter URL">
-    <button onclick="shorten()">Shorten</button>
-    <p id="result"></p>
-    <script src="script.js"></script>
+    <div class="floating-particles" id="particles"></div>
+    
+    <div class="bubble-container">
+        <div class="bubble"></div>
+        <div class="bubble"></div>
+        <div class="bubble"></div>
+        <div class="bubble"></div>
+        <div class="bubble"></div>
+        <div class="bubble"></div>
+        <div class="bubble"></div>
+        <div class="bubble"></div>
+    </div>
+
+    <div class="container">
+        <h1>🔗 URL Shortener</h1>
+        <p class="subtitle">Transform long URLs into short, shareable links</p>
+        
+        <div class="input-group">
+            <input type="text" id="url" placeholder="Enter your long URL here..." />
+        </div>
+        
+        <button class="btn" onclick="shortenUrl()">
+            <span id="btn-text">Shorten URL</span>
+        </button>
+        
+        <div class="result-container" id="result-container">
+            <h3 style="color: white; margin-bottom: 15px;">✨ Your shortened URL:</h3>
+            <div class="result-url" id="shortened-url"></div>
+            <button class="btn copy-btn" onclick="copyToClipboard()">
+                📋 Copy to Clipboard
+            </button>
+            <div id="copy-message"></div>
+        </div>
+    </div>
+
+    <script>
+        // Create floating particles
+        function createParticles() {
+            const particlesContainer = document.getElementById('particles');
+            const particleCount = 20;
+            
+            for (let i = 0; i < particleCount; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                particle.style.left = Math.random() * 100 + '%';
+                particle.style.width = particle.style.height = Math.random() * 4 + 2 + 'px';
+                particle.style.animationDelay = Math.random() * 15 + 's';
+                particle.style.animationDuration = (Math.random() * 10 + 10) + 's';
+                particlesContainer.appendChild(particle);
+            }
+        }
+
+        createParticles();
+
+        let shortenedUrl = '';
+
+        async function shortenUrl() {
+            const urlInput = document.getElementById('url');
+            const url = urlInput.value.trim();
+            const btnText = document.getElementById('btn-text');
+            const resultContainer = document.getElementById('result-container');
+            const shortenedUrlDiv = document.getElementById('shortened-url');
+            
+            if (!url) {
+                showMessage('Please enter a URL!', 'error');
+                return;
+            }
+
+            if (!isValidUrl(url)) {
+                showMessage('Please enter a valid URL!', 'error');
+                return;
+            }
+
+            // Show loading state
+            btnText.innerHTML = '<div class="loading"></div>Shortening...';
+            document.querySelector('.btn').disabled = true;
+
+            try {
+                const response = await fetch('http://3.110.114.163:5000/shorten', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ url: url })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to shorten URL');
+                }
+
+                const data = await response.json();
+                shortenedUrl = data.short_url;
+                
+                shortenedUrlDiv.textContent = shortenedUrl;
+                resultContainer.style.display = 'block';
+                
+                showMessage('URL shortened successfully!', 'success');
+                
+            } catch (error) {
+                console.error('Error:', error);
+                showMessage('Error shortening URL. Please try again.', 'error');
+            } finally {
+                btnText.textContent = 'Shorten URL';
+                document.querySelector('.btn').disabled = false;
+            }
+        }
+
+        function copyToClipboard() {
+            if (!shortenedUrl) return;
+            
+            navigator.clipboard.writeText(shortenedUrl).then(() => {
+                showMessage('Copied to clipboard! 🎉', 'success');
+            }).catch(() => {
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = shortenedUrl;
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                showMessage('Copied to clipboard! 🎉', 'success');
+            });
+        }
+
+        function showMessage(message, type) {
+            const messageDiv = document.getElementById('copy-message');
+            messageDiv.textContent = message;
+            messageDiv.className = type + '-message';
+            
+            setTimeout(() => {
+                messageDiv.textContent = '';
+                messageDiv.className = '';
+            }, 3000);
+        }
+
+        function isValidUrl(string) {
+            try {
+                new URL(string);
+                return true;
+            } catch (_) {
+                return false;
+            }
+        }
+
+        // Allow Enter key to submit
+        document.getElementById('url').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                shortenUrl();
+            }
+        });
+
+        // Clear result when input changes
+        document.getElementById('url').addEventListener('input', function() {
+            document.getElementById('result-container').style.display = 'none';
+            shortenedUrl = '';
+        });
+    </script>
 </body>
 </html>

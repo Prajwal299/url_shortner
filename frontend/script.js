@@ -1,10 +1,15 @@
-function shorten() {
-    const url = document.getElementById('url').value;
-    fetch('http://localhost:3000/shorten', {  // Update to API service in K8s
+function shortenUrl() {
+    fetch('http://3.110.114.163:5000/shorten', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url })
-    }).then(res => res.json()).then(data => {
-        document.getElementById('result').innerText = data.short_url;
+        body: JSON.stringify({ url: document.getElementById('url').value })
+    })
+    .then(response => response.json())
+    .then(data => {
+        document.getElementById('result').innerText = data.short_url || data.error;
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        document.getElementById('result').innerText = 'Error: Could not shorten URL';
     });
 }
