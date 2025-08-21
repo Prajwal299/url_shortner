@@ -337,7 +337,7 @@ EOF
                     echo "=== Application Health Check ==="
                     
                     # Check local deployment
-                    if docker ps | grep -q "deploy.*api\|deploy.*frontend\|deploy.*mysql"; then
+                    if docker ps | grep -q -E "deploy.*api|deploy.*frontend|deploy.*mysql"; then
                         echo "✅ Local containers are running"
                         
                         # Test API endpoints with retries
