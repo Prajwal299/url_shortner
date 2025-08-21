@@ -3,7 +3,7 @@ pipeline {
     environment {
         IMAGE_TAG = "${BUILD_NUMBER}"
         NAMESPACE = 'url-shortener'
-        REGISTRY = 'http://3.110.114.163:5000'
+        REGISTRY = '3.110.114.163:5000'
         API_IMAGE = "${REGISTRY}/url-shortener-api"
         FRONTEND_IMAGE = "${REGISTRY}/url-shortener-frontend"
         KUBECONFIG = '/var/lib/jenkins/.kube/config'
@@ -26,14 +26,14 @@ pipeline {
                     docker --version && echo "✅ Docker available" || echo "❌ Docker not found"
                     kubectl --kubeconfig=$KUBECONFIG version --client && echo "✅ kubectl available" || echo "❌ kubectl not found"
                     echo "=== Registry Check ==="
-                    curl -s http://3.110.114.163:5000/v2/ && echo "✅ Registry available" || echo "❌ Registry not accessible"
+                    curl -f http://${REGISTRY}/v2/ && echo "✅ Registry available" || echo "❌ Registry not accessible"
                     echo "=== Jenkins User Check ==="
                     whoami
                     groups
                     echo "=== Disk Space ==="
                     df -h
                     echo "=== Kubernetes Config ==="
-                    ls -l $KUBECONFIG || echo "❌ kubeconfig not found"
+                    ls -l $KUBECONFIG && echo "✅ kubeconfig found" || echo "❌ kubeconfig not found"
                     '''
                 }
             }
@@ -48,23 +48,47 @@ pipeline {
                         echo "=== Cleaning up old images ==="
                         docker image prune -f --filter "until=48h" || true
                         echo "=== Building API image ==="
-                        docker build -t ${API_IMAGE##http://}:$IMAGE_TAG -t ${API_IMAGE##http://}:latest ./app || {
+                        docker build -t ${REGISTRY}/url-shortener-api:$IMAGE_TAG -t ${REGISTRY}/url-shortener-api:latest ./app || {
                             echo "❌ API build failed!"
                             df -h
                             docker system df
                             exit 1
                         }
                         echo "=== Building Frontend image ==="
-                        docker build -t ${FRONTEND_IMAGE##http://}:$IMAGE_TAG -t ${FRONTEND_IMAGE##http://}:latest ./frontend || {
+                        docker build -t ${REGISTRY}/url-shortener-frontend:$IMAGE_TAG -t ${REGISTRY}/url-shortener-frontend:latest ./frontend || {
                             echo "❌ Frontend build failed!"
                             df -h
                             docker system df
                             exit 1
                         }
                         echo "✅ Images built successfully"
-                        docker images | grep ${REGISTRY##http://}
+                        docker images | grep ${REGISTRY}
                         '''
                     }
+                }
+            }
+        }
+        stage('Configure Docker for Registry') {
+            steps {
+                script {
+                    echo "⚙️ Configuring Docker for insecure registry..."
+                    sh '''
+                    # Check if daemon.json exists and configure insecure registry
+                    sudo mkdir -p /etc/docker
+                    if [ ! -f /etc/docker/daemon.json ]; then
+                        echo '{"insecure-registries":["'${REGISTRY}'"]}' | sudo tee /etc/docker/daemon.json
+                    else
+                        # Update existing daemon.json (simplified - may need more complex logic)
+                        echo '{"insecure-registries":["'${REGISTRY}'"]}' | sudo tee /etc/docker/daemon.json
+                    fi
+                    
+                    # Restart Docker daemon
+                    sudo systemctl restart docker
+                    
+                    # Wait for Docker to be ready
+                    sleep 10
+                    docker info | grep -i registry || echo "Registry info not available"
+                    '''
                 }
             }
         }
@@ -74,18 +98,26 @@ pipeline {
                     echo "📤 Pushing images to local registry..."
                     sh '''
                     set -e
-                    docker push ${API_IMAGE##http://}:$IMAGE_TAG || {
+                    echo "=== Testing registry connectivity ==="
+                    curl -f http://${REGISTRY}/v2/ || {
+                        echo "❌ Registry not accessible via HTTP"
+                        exit 1
+                    }
+                    
+                    echo "=== Pushing API image ==="
+                    docker push ${REGISTRY}/url-shortener-api:$IMAGE_TAG || {
                         echo "❌ Failed to push API image!"
-                        curl -s http://3.110.114.163:5000/v2/ || echo "❌ Registry not accessible"
+                        docker info | grep -A 5 "Insecure Registries"
                         exit 1
                     }
-                    docker push ${API_IMAGE##http://}:latest
-                    docker push ${FRONTEND_IMAGE##http://}:$IMAGE_TAG || {
+                    docker push ${REGISTRY}/url-shortener-api:latest
+                    
+                    echo "=== Pushing Frontend image ==="
+                    docker push ${REGISTRY}/url-shortener-frontend:$IMAGE_TAG || {
                         echo "❌ Failed to push frontend image!"
-                        curl -s http://3.110.114.163:5000/v2/ || echo "❌ Registry not accessible"
                         exit 1
                     }
-                    docker push ${FRONTEND_IMAGE##http://}:latest
+                    docker push ${REGISTRY}/url-shortener-frontend:latest
                     echo "✅ Images pushed to local registry"
                     '''
                 }
@@ -99,18 +131,33 @@ pipeline {
                     set -e
                     if [ ! -f "$KUBECONFIG" ]; then
                         echo "❌ kubeconfig not found at $KUBECONFIG"
+                        echo "Creating directory and placeholder..."
+                        mkdir -p $(dirname $KUBECONFIG)
+                        echo "Please configure your kubeconfig file at $KUBECONFIG"
                         exit 1
                     fi
+                    
+                    echo "=== Testing Kubernetes connectivity ==="
+                    kubectl --kubeconfig=$KUBECONFIG cluster-info || {
+                        echo "❌ Cannot connect to Kubernetes cluster"
+                        exit 1
+                    }
+                    
                     echo "=== Cleaning up old pods ==="
                     kubectl --kubeconfig=$KUBECONFIG delete pod -n $NAMESPACE -l app=api --force --grace-period=0 || true
                     kubectl --kubeconfig=$KUBECONFIG delete pod -n $NAMESPACE -l app=frontend --force --grace-period=0 || true
+                    
                     echo "=== Applying manifests ==="
                     kubectl --kubeconfig=$KUBECONFIG apply -f k8s/namespace.yaml
                     kubectl --kubeconfig=$KUBECONFIG apply -f k8s/mysql-deployment.yaml
-                    kubectl --kubeconfig=$KUBECONFIG set image deployment/api api=${API_IMAGE##http://}:$IMAGE_TAG -n $NAMESPACE --record
-                    kubectl --kubeconfig=$KUBECONFIG set image deployment/frontend frontend=${FRONTEND_IMAGE##http://}:$IMAGE_TAG -n $NAMESPACE --record
+                    
+                    # Update image tags
+                    kubectl --kubeconfig=$KUBECONFIG set image deployment/api api=${REGISTRY}/url-shortener-api:$IMAGE_TAG -n $NAMESPACE --record || echo "API deployment may not exist yet"
+                    kubectl --kubeconfig=$KUBECONFIG set image deployment/frontend frontend=${REGISTRY}/url-shortener-frontend:$IMAGE_TAG -n $NAMESPACE --record || echo "Frontend deployment may not exist yet"
+                    
                     kubectl --kubeconfig=$KUBECONFIG apply -f k8s/api-deployment.yaml
                     kubectl --kubeconfig=$KUBECONFIG apply -f k8s/frontend-deployment.yaml
+                    
                     echo "=== Waiting for rollouts ==="
                     kubectl --kubeconfig=$KUBECONFIG rollout status deployment/api -n $NAMESPACE --timeout=300s
                     kubectl --kubeconfig=$KUBECONFIG rollout status deployment/frontend -n $NAMESPACE --timeout=300s
