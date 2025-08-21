@@ -1,12 +1,12 @@
 pipeline {
     agent any
     environment {
+        AWS_REGION = 'ap-south-1'
+        ECR_REGISTRY = '934556830376.dkr.ecr.ap-south-1.amazonaws.com'
+        ECR_API_REPO = 'url-shortener-api'
+        ECR_FRONTEND_REPO = 'url-shortener-frontend'
         IMAGE_TAG = "${BUILD_NUMBER}"
         NAMESPACE = 'url-shortener'
-        REGISTRY = '3.110.114.163:5000'
-        API_IMAGE = "${REGISTRY}/url-shortener-api"
-        FRONTEND_IMAGE = "${REGISTRY}/url-shortener-frontend"
-        KUBECONFIG = '/var/lib/jenkins/.kube/config'
     }
     options {
         timeout(time: 20, unit: 'MINUTES')
@@ -24,14 +24,14 @@ pipeline {
                     ls -la
                     echo "=== Tool Availability ==="
                     docker --version && echo "✅ Docker available" || echo "❌ Docker not found"
-                    kubectl --kubeconfig=$KUBECONFIG version --client && echo "✅ kubectl available" || echo "❌ kubectl not found"
+                    kubectl version --client && echo "✅ kubectl available" || echo "❌ kubectl not found"
+                    aws --version && echo "✅ AWS CLI available" || echo "❌ AWS CLI not found"
+                    unzip -v && echo "✅ unzip available" || echo "❌ unzip not found"
                     echo "=== Jenkins User Check ==="
                     whoami
                     groups
                     echo "=== Disk Space ==="
                     df -h
-                    echo "=== Kubernetes Config ==="
-                    ls -l $KUBECONFIG || echo "❌ kubeconfig not found"
                     '''
                 }
             }
@@ -46,77 +46,88 @@ pipeline {
                         echo "=== Cleaning up old images ==="
                         docker image prune -f --filter "until=48h" || true
                         echo "=== Building API image ==="
-                        docker build -t $API_IMAGE:$IMAGE_TAG -t $API_IMAGE:latest ./app || {
+                        docker build -t $ECR_REGISTRY/$ECR_API_REPO:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_API_REPO:latest ./app || {
                             echo "❌ API build failed!"
                             df -h
                             docker system df
                             exit 1
                         }
                         echo "=== Building Frontend image ==="
-                        docker build -t $FRONTEND_IMAGE:$IMAGE_TAG -t $FRONTEND_IMAGE:latest ./frontend || {
+                        docker build -t $ECR_REGISTRY/$ECR_FRONTEND_REPO:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_FRONTEND_REPO:latest ./frontend || {
                             echo "❌ Frontend build failed!"
                             df -h
                             docker system df
                             exit 1
                         }
                         echo "✅ Images built successfully"
-                        docker images | grep $REGISTRY
+                        docker images | grep $ECR_REGISTRY
                         '''
                     }
                 }
             }
         }
-        stage('Push to Local Registry') {
+        stage('Push to ECR') {
             steps {
-                script {
-                    echo "📤 Pushing images to local registry..."
-                    sh '''
-                    set -e
-                    docker push $API_IMAGE:$IMAGE_TAG
-                    docker push $API_IMAGE:latest
-                    docker push $FRONTEND_IMAGE:$IMAGE_TAG
-                    docker push $FRONTEND_IMAGE:latest
-                    echo "✅ Images pushed to local registry"
-                    '''
+                withCredentials([aws(credentialsId: 'aws-creds', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                    script {
+                        echo "📤 Pushing images to ECR..."
+                        sh '''
+                        aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
+                        docker push $ECR_REGISTRY/$ECR_API_REPO:$IMAGE_TAG
+                        docker push $ECR_REGISTRY/$ECR_API_REPO:latest
+                        docker push $ECR_REGISTRY/$ECR_FRONTEND_REPO:$IMAGE_TAG
+                        docker push $ECR_REGISTRY/$ECR_FRONTEND_REPO:latest
+                        echo "✅ Images pushed to ECR"
+                        '''
+                    }
                 }
             }
         }
         stage('Deploy to Kubernetes') {
             steps {
-                script {
-                    echo "☸️ Deploying to Kubernetes..."
-                    sh '''
-                    set -e
-                    echo "=== Cleaning up old pods ==="
-                    kubectl --kubeconfig=$KUBECONFIG delete pod -n $NAMESPACE -l app=api --force --grace-period=0 || true
-                    kubectl --kubeconfig=$KUBECONFIG delete pod -n $NAMESPACE -l app=frontend --force --grace-period=0 || true
-                    echo "=== Applying manifests ==="
-                    kubectl --kubeconfig=$KUBECONFIG apply -f k8s/namespace.yaml
-                    kubectl --kubeconfig=$KUBECONFIG apply -f k8s/mysql-deployment.yaml
-                    kubectl --kubeconfig=$KUBECONFIG set image deployment/api api=$API_IMAGE:$IMAGE_TAG -n $NAMESPACE --record
-                    kubectl --kubeconfig=$KUBECONFIG set image deployment/frontend frontend=$FRONTEND_IMAGE:$IMAGE_TAG -n $NAMESPACE --record
-                    kubectl --kubeconfig=$KUBECONFIG apply -f k8s/api-deployment.yaml
-                    kubectl --kubeconfig=$KUBECONFIG apply -f k8s/frontend-deployment.yaml
-                    echo "=== Waiting for rollouts ==="
-                    kubectl --kubeconfig=$KUBECONFIG rollout status deployment/api -n $NAMESPACE --timeout=300s
-                    kubectl --kubeconfig=$KUBECONFIG rollout status deployment/frontend -n $NAMESPACE --timeout=300s
-                    echo "✅ Deployment completed"
-                    kubectl --kubeconfig=$KUBECONFIG get pods -n $NAMESPACE
-                    '''
+                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                    script {
+                        echo "☸️ Deploying to Kubernetes..."
+                        sh '''
+                        cat > deploy.sh << 'EOF'
+#!/bin/bash
+set -e
+KUBECONFIG_FILE="$1"
+NAMESPACE="$2"
+IMAGE_TAG="$3"
+ECR_REGISTRY="$4"
+ECR_API_REPO="$5"
+ECR_FRONTEND_REPO="$6"
+echo "Starting deployment with image tag: $IMAGE_TAG"
+kubectl --kubeconfig="$KUBECONFIG_FILE" apply -f k8s/namespace.yaml
+kubectl --kubeconfig="$KUBECONFIG_FILE" apply -f k8s/mysql-deployment.yaml
+kubectl --kubeconfig="$KUBECONFIG_FILE" set image deployment/api api="$ECR_REGISTRY/$ECR_API_REPO:$IMAGE_TAG" -n "$NAMESPACE" --record
+kubectl --kubeconfig="$KUBECONFIG_FILE" set image deployment/frontend frontend="$ECR_REGISTRY/$ECR_FRONTEND_REPO:$IMAGE_TAG" -n "$NAMESPACE" --record
+kubectl --kubeconfig="$KUBECONFIG_FILE" apply -f k8s/api-deployment.yaml
+kubectl --kubeconfig="$KUBECONFIG_FILE" apply -f k8s/frontend-deployment.yaml
+echo "Waiting for rollouts..."
+kubectl --kubeconfig="$KUBECONFIG_FILE" rollout status deployment/api -n "$NAMESPACE" --timeout=300s
+kubectl --kubeconfig="$KUBECONFIG_FILE" rollout status deployment/frontend -n "$NAMESPACE" --timeout=300s
+echo "Deployment completed successfully!"
+kubectl --kubeconfig="$KUBECONFIG_FILE" get pods -n "$NAMESPACE"
+EOF
+                        chmod +x deploy.sh
+                        ./deploy.sh "$KUBECONFIG" "$NAMESPACE" "$IMAGE_TAG" "$ECR_REGISTRY" "$ECR_API_REPO" "$ECR_FRONTEND_REPO"
+                        '''
+                    }
                 }
             }
         }
         stage('Verify Deployment') {
             steps {
-                script {
-                    echo "🏥 Verifying deployment..."
+                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                     sh '''
                     echo "=== Deployment Status ==="
-                    kubectl --kubeconfig=$KUBECONFIG get deployments -n $NAMESPACE
+                    kubectl --kubeconfig="$KUBECONFIG" get deployments -n url-shortener
                     echo "=== Pod Status ==="
-                    kubectl --kubeconfig=$KUBECONFIG get pods -n $NAMESPACE
+                    kubectl --kubeconfig="$KUBECONFIG" get pods -n url-shortener
                     echo "=== Service Status ==="
-                    kubectl --kubeconfig=$KUBECONFIG get services -n $NAMESPACE
+                    kubectl --kubeconfig="$KUBECONFIG" get services -n url-shortener
                     '''
                 }
             }
@@ -136,7 +147,7 @@ pipeline {
             echo """
             ✅ 🎉 DEPLOYMENT SUCCESSFUL! 🎉 ✅
             📋 What happened:
-            • Built new images with tag: $IMAGE_TAG
+            • Built new images with tag: $BUILD_NUMBER
             • Replaced old pods with new ones
             • Application is running with latest code
             🔗 Access your application:
@@ -148,10 +159,10 @@ pipeline {
             echo """
             ❌ Deployment failed! 
             🔍 Common issues to check:
-            • Docker build issues (check Dockerfile, network)
+            • Docker build timeout (check network, resources)
+            • AWS ECR authentication
             • Kubernetes connectivity or manifest errors
             • Insufficient resources on Jenkins EC2
-            • Missing kubeconfig at $KUBECONFIG
             Check the logs above for details.
             """
         }
