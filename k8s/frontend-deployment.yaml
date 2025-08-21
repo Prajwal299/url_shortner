@@ -15,9 +15,19 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: 934556830376.dkr.ecr.ap-south-1.amazonaws.com/url-shortener-frontend:latest
+        image: 3.110.114.163:5000/url-shortener-frontend:latest
         ports:
-          - containerPort: 80
+        - containerPort: 3000
+        env:
+        - name: REACT_APP_API_URL
+          value: "http://api:5000"
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
 ---
 apiVersion: v1
 kind: Service
@@ -25,9 +35,10 @@ metadata:
   name: frontend
   namespace: url-shortener
 spec:
-  type: LoadBalancer
-  ports:
-  - port: 80
-    targetPort: 80
   selector:
     app: frontend
+  ports:
+  - protocol: TCP
+    port: 3000
+    targetPort: 3000
+  type: NodePort

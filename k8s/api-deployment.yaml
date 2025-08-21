@@ -4,7 +4,7 @@ metadata:
   name: api
   namespace: url-shortener
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: api
@@ -15,24 +15,19 @@ spec:
     spec:
       containers:
       - name: api
-        image: 934556830376.dkr.ecr.ap-south-1.amazonaws.com/url-shortener-api:latest  # From Terraform output
+        image: 3.110.114.163:5000/url-shortener-api:latest
         ports:
-          - containerPort: 5000
+        - containerPort: 5000
         env:
-        - name: DB_HOST
-          value: mysql
-        - name: DB_USER
-          valueFrom:
-            secretKeyRef:
-              name: mysql-secret
-              key: MYSQL_USER
-        - name: DB_PASS
-          valueFrom:
-            secretKeyRef:
-              name: mysql-secret
-              key: MYSQL_PASSWORD
-        - name: DB_NAME
-          value: urlshortener
+        - name: DATABASE_URL
+          value: "mysql://user:userpassword@mysql:3306/url_shortener"
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
 ---
 apiVersion: v1
 kind: Service
@@ -40,9 +35,10 @@ metadata:
   name: api
   namespace: url-shortener
 spec:
-  type: LoadBalancer  # Expose externally
-  ports:
-  - port: 5000
-    targetPort: 5000
   selector:
     app: api
+  ports:
+  - protocol: TCP
+    port: 5000
+    targetPort: 5000
+  type: NodePort
