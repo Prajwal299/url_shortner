@@ -3,18 +3,13 @@ pipeline {
 
     environment {
         JAVA_HOME = "/usr/lib/jvm/java-17-openjdk-amd64"
-        PATH = "$JAVA_HOME/bin:$PATH"
-    }
-
-    tools {
-        jdk 'java17'        // Make sure Jenkins Global Tool Config has "java17"
-        maven 'maven3'      // Add Maven in Jenkins Global Tool Config as "maven3"
+        PATH = "$JAVA_HOME/bin:/usr/share/maven/bin:$PATH"
     }
 
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/your-username/your-repo.git'
+                git branch: 'main', url: 'https://github.com/Prajwal299/url_shortner.git'
             }
         }
 
