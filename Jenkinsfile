@@ -18,6 +18,7 @@ pipeline {
                 sshagent(credentials: ['ec2-ssh-key']) {
                     sh """
                         ssh -o StrictHostKeyChecking=no ubuntu@\${DEPLOY_SERVER_IP} '
+                            set -e
                             echo "--- Connected to deployment server. Preparing workspace... ---"
                             if [ ! -d "\${APP_DIR}" ]; then
                                 echo "Cloning repository..."
@@ -29,6 +30,9 @@ pipeline {
                             fi
 
                             cd \${APP_DIR}
+
+                            echo "--- Checking disk space... ---"
+                            df -h
 
                             echo "--- Building API Docker image... ---"
                             docker build -t \${API_IMAGE_NAME}:\${BUILD_NUMBER} -t \${API_IMAGE_NAME}:latest ./app
