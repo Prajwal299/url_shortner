@@ -2,68 +2,66 @@ pipeline {
     agent any
 
     environment {
-        JAVA_HOME = "/usr/lib/jvm/java-17-openjdk-amd64"
-        PATH = "$JAVA_HOME/bin:/usr/share/maven/bin:$PATH"
+        AWS_DEFAULT_REGION = "ap-south-1"   // change if required
+        APP_NAME = "url-shortener"
     }
 
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/Prajwal299/url_shortner.git'
+                git branch: 'main',
+                    url: 'https://github.com/Prajwal299/url_shortner.git'
             }
         }
 
-        stage('Build') {
+        stage('Install Dependencies') {
             steps {
                 dir('app') {
-                    sh 'mvn clean compile'
+                    sh 'pip3 install -r requirements.txt'
                 }
             }
         }
 
-        stage('Test') {
+        stage('Build Docker Images') {
             steps {
-                dir('app') {
-                    sh 'mvn test'
-                }
-            }
-            post {
-                always {
-                    junit 'app/target/surefire-reports/*.xml'
+                script {
+                    sh 'docker build -t ${APP_NAME}-api ./app'
+                    sh 'docker build -t ${APP_NAME}-frontend ./frontend'
                 }
             }
         }
 
-        stage('Package') {
+        stage('Run Docker Compose') {
             steps {
-                dir('app') {
-                    sh 'mvn package -DskipTests'
-                }
-                archiveArtifacts artifacts: 'app/target/*.jar', fingerprint: true
+                sh 'docker-compose up -d --build'
             }
         }
 
-        stage('Deploy to EC2') {
-            when {
-                branch 'main'
-            }
+        stage('Deploy to Kubernetes') {
             steps {
-                withCredentials([sshUserPrivateKey(credentialsId: 'ec2-ssh-key', keyFileVariable: 'SSH_KEY')]) {
-                    sh """
-                        scp -o StrictHostKeyChecking=no -i $SSH_KEY app/target/*.jar ubuntu@YOUR_EC2_IP:/home/ubuntu/app.jar
-                        ssh -o StrictHostKeyChecking=no -i $SSH_KEY ubuntu@YOUR_EC2_IP 'nohup java -jar /home/ubuntu/app.jar > app.log 2>&1 &'
-                    """
+                withAWS(region: "${AWS_DEFAULT_REGION}", credentials: 'aws-creds') {
+                    sh '''
+                        aws eks update-kubeconfig --name my-cluster
+                        kubectl apply -f k8s/namespace.yaml
+                        kubectl apply -f k8s/mysql-deployment.yaml
+                        kubectl apply -f k8s/api-deployment.yaml
+                        kubectl apply -f k8s/frontend-deployment.yaml
+                        kubectl apply -f k8s/hpa.yaml
+                    '''
                 }
             }
         }
     }
 
     post {
+        always {
+            sh 'docker-compose down || true'
+        }
         success {
-            echo 'Pipeline executed successfully ✅'
+            echo '✅ Deployment Successful!'
         }
         failure {
-            echo 'Pipeline failed ❌'
+            echo '❌ Deployment Failed. Please check logs.'
         }
     }
 }
