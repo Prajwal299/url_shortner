@@ -15,25 +15,31 @@ pipeline {
 
         stage('Build') {
             steps {
-                sh 'mvn clean compile'
+                dir('app') {
+                    sh 'mvn clean compile'
+                }
             }
         }
 
         stage('Test') {
             steps {
-                sh 'mvn test'
+                dir('app') {
+                    sh 'mvn test'
+                }
             }
             post {
                 always {
-                    junit '**/target/surefire-reports/*.xml'
+                    junit 'app/target/surefire-reports/*.xml'
                 }
             }
         }
 
         stage('Package') {
             steps {
-                sh 'mvn package -DskipTests'
-                archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+                dir('app') {
+                    sh 'mvn package -DskipTests'
+                }
+                archiveArtifacts artifacts: 'app/target/*.jar', fingerprint: true
             }
         }
 
@@ -44,7 +50,7 @@ pipeline {
             steps {
                 withCredentials([sshUserPrivateKey(credentialsId: 'ec2-ssh-key', keyFileVariable: 'SSH_KEY')]) {
                     sh """
-                        scp -o StrictHostKeyChecking=no -i $SSH_KEY target/*.jar ubuntu@YOUR_EC2_IP:/home/ubuntu/app.jar
+                        scp -o StrictHostKeyChecking=no -i $SSH_KEY app/target/*.jar ubuntu@YOUR_EC2_IP:/home/ubuntu/app.jar
                         ssh -o StrictHostKeyChecking=no -i $SSH_KEY ubuntu@YOUR_EC2_IP 'nohup java -jar /home/ubuntu/app.jar > app.log 2>&1 &'
                     """
                 }
