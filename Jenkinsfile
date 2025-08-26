@@ -1,5 +1,9 @@
 pipeline {
-    agent any
+    agent {
+        node {
+            label 'master'
+        }
+    }
     
     environment {
         DOCKER_REGISTRY = '934556830376.dkr.ecr.ap-south-1.amazonaws.com'
@@ -7,6 +11,7 @@ pipeline {
         FRONTEND_IMAGE = "${DOCKER_REGISTRY}/url-shortener-frontend"
         KUBECONFIG = '/var/lib/jenkins/.kube/config'
         ANSIBLE_HOST_KEY_CHECKING = 'False'
+        PATH = "/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin"
     }
     
     stages {
@@ -19,10 +24,14 @@ pipeline {
         stage('Build API Image') {
             steps {
                 script {
+                    // Verify Docker is available
+                    sh 'which docker || echo "Docker not found in PATH"'
+                    sh 'docker --version || echo "Docker command failed"'
+                    
                     dir('app') {
                         sh """
-                            docker build -t ${API_IMAGE}:${BUILD_NUMBER} .
-                            docker tag ${API_IMAGE}:${BUILD_NUMBER} ${API_IMAGE}:latest
+                            sudo docker build -t ${API_IMAGE}:${BUILD_NUMBER} .
+                            sudo docker tag ${API_IMAGE}:${BUILD_NUMBER} ${API_IMAGE}:latest
                         """
                     }
                 }
@@ -34,8 +43,8 @@ pipeline {
                 script {
                     dir('frontend') {
                         sh """
-                            docker build -t ${FRONTEND_IMAGE}:${BUILD_NUMBER} .
-                            docker tag ${FRONTEND_IMAGE}:${BUILD_NUMBER} ${FRONTEND_IMAGE}:latest
+                            sudo docker build -t ${FRONTEND_IMAGE}:${BUILD_NUMBER} .
+                            sudo docker tag ${FRONTEND_IMAGE}:${BUILD_NUMBER} ${FRONTEND_IMAGE}:latest
                         """
                     }
                 }
@@ -46,11 +55,11 @@ pipeline {
             steps {
                 script {
                     sh '''
-                        aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin ${DOCKER_REGISTRY}
-                        docker push ${API_IMAGE}:${BUILD_NUMBER}
-                        docker push ${API_IMAGE}:latest
-                        docker push ${FRONTEND_IMAGE}:${BUILD_NUMBER}
-                        docker push ${FRONTEND_IMAGE}:latest
+                        aws ecr get-login-password --region ap-south-1 | sudo docker login --username AWS --password-stdin ${DOCKER_REGISTRY}
+                        sudo docker push ${API_IMAGE}:${BUILD_NUMBER}
+                        sudo docker push ${API_IMAGE}:latest
+                        sudo docker push ${FRONTEND_IMAGE}:${BUILD_NUMBER}
+                        sudo docker push ${FRONTEND_IMAGE}:latest
                     '''
                 }
             }
@@ -114,11 +123,11 @@ pipeline {
                 script {
                     sh '''
                         # Keep only last 5 builds worth of images
-                        docker images ${API_IMAGE} --format "table {{.Tag}}" | tail -n +2 | sort -nr | tail -n +6 | xargs -I {} docker rmi ${API_IMAGE}:{} || true
-                        docker images ${FRONTEND_IMAGE} --format "table {{.Tag}}" | tail -n +2 | sort -nr | tail -n +6 | xargs -I {} docker rmi ${FRONTEND_IMAGE}:{} || true
+                        sudo docker images ${API_IMAGE} --format "table {{.Tag}}" | tail -n +2 | sort -nr | tail -n +6 | xargs -I {} sudo docker rmi ${API_IMAGE}:{} || true
+                        sudo docker images ${FRONTEND_IMAGE} --format "table {{.Tag}}" | tail -n +2 | sort -nr | tail -n +6 | xargs -I {} sudo docker rmi ${FRONTEND_IMAGE}:{} || true
                         
                         # Clean up dangling images
-                        docker image prune -f
+                        sudo docker image prune -f
                     '''
                 }
             }
