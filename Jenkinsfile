@@ -39,7 +39,7 @@ pipeline {
 
         stage('Deploy to EC2') {
             when {
-                expression { return env.BRANCH_NAME == "main" }
+                branch 'main'
             }
             steps {
                 withCredentials([sshUserPrivateKey(credentialsId: 'ec2-ssh-key', keyFileVariable: 'SSH_KEY')]) {
