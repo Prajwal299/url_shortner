@@ -74,9 +74,9 @@ pipeline {
         stage('Deploy to EC2') {
             steps {
                 echo "Deploying to EC2 instance: ${DEPLOY_SERVER_IP}"
-                sshagent(credentials: ['ec2-ssh-key']) {
+                sshagent(credentials: ['ubuntu']) {
                     sh """
-                        ssh -o StrictHostKeyChecking=no ubuntu@${DEPLOY_SERVER_IP} << 'EOF'
+                        ssh -o StrictHostKeyChecking=no ubuntu@${DEPLOY_SERVER_IP} << 'DEPLOY_EOF'
                             echo "--- Connected to deployment server ---"
 
                             if [ ! -d "${APP_DIR}" ]; then
@@ -106,7 +106,7 @@ pipeline {
 
                             echo "--- Deployment successful ---"
                             docker ps -a || true
-                        EOF
+DEPLOY_EOF
                     """
                 }
             }
