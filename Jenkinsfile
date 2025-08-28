@@ -58,46 +58,56 @@ pipeline {
     agent any
 
     environment {
-        // Change this to your private key path inside Jenkins
-        SSH_KEY = '/var/lib/jenkins/.ssh/id_jenkins'
-        REMOTE_USER = 'ubuntu'
-        REMOTE_HOST = '3.110.114.163'   // Replace with your server IP
-        APP_DIR = '/home/ubuntu/url_shortner'
+        DEPLOY_SERVER_IP = "3.110.114.163"
+        REPO_URL = "https://github.com/Prajwal299/url_shortner.git"
+        APP_DIR = "/home/ubuntu/url_shortner"
     }
 
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main',
-                    url: 'https://github.com/Prajwal299/url_shortner.git'
+                echo "Checking out code from repository"
+                checkout scm
             }
         }
 
-        stage('Build') {
+        stage('Deploy to EC2') {
             steps {
-                sh '''
-                    echo "Building project..."
-                    # Example build step
-                    python3 -m py_compile app/app.py || true
-                '''
-            }
-        }
+                echo "Deploying to EC2 instance: ${DEPLOY_SERVER_IP}"
+                sshagent(credentials: ['ec2-ssh-key']) {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no ubuntu@${DEPLOY_SERVER_IP} << 'EOF'
+                            echo "--- Connected to deployment server ---"
 
-        stage('Deploy') {
-            steps {
-                sshagent (credentials: ['jenkins-ssh-key']) {
-                    sh '''
-                        echo "Deploying to remote server..."
+                            if [ ! -d "${APP_DIR}" ]; then
+                                echo "Cloning repository..."
+                                git clone ${REPO_URL} ${APP_DIR} || true
+                            else
+                                echo "Repository exists. Pulling latest changes..."
+                                cd ${APP_DIR}
+                                git fetch origin || true
+                                git reset --hard origin/main || true
+                            fi
 
-                        # Copy files to remote server
-                        scp -o StrictHostKeyChecking=no -i $SSH_KEY -r * $REMOTE_USER@$REMOTE_HOST:$APP_DIR
+                            cd ${APP_DIR}
 
-                        # Restart app (example for Flask + Gunicorn)
-                        ssh -o StrictHostKeyChecking=no -i $SSH_KEY $REMOTE_USER@$REMOTE_HOST << EOF
-                        cd $APP_DIR
-                        nohup python3 app/app.py > app.log 2>&1 &
+                            echo "--- Checking disk space ---"
+                            df -h || true
+
+                            echo "--- Stopping and removing existing containers ---"
+                            docker-compose down || true
+
+                            echo "--- Building and starting containers ---"
+                            docker-compose build --no-cache || true
+                            docker-compose up -d || true
+
+                            echo "--- Cleaning up old images ---"
+                            docker image prune -f --filter "until=48h" || true
+
+                            echo "--- Deployment successful ---"
+                            docker ps -a || true
                         EOF
-                    '''
+                    """
                 }
             }
         }
@@ -108,7 +118,7 @@ pipeline {
             echo '✅ Build and Deployment Successful!'
         }
         failure {
-            echo '❌ Build Failed!'
+            echo '❌ Build Failed – check logs above.'
         }
     }
 }
