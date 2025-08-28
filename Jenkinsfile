@@ -1,62 +1,9 @@
-
-// pipeline {
-//     agent any
-
-//     environment {
-//         DEPLOY_SERVER_IP = "3.110.114.163"
-//         REPO_URL = "https://github.com/Prajwal299/url_shortner.git"
-//         APP_DIR = "/home/ubuntu/url_shortner"
-//     }
-
-//     stages {
-//         stage('Checkout') {
-//             steps {
-//                 echo "Checking out code from repository"
-//                 checkout scm
-//             }
-//         }
-
-//         stage('Deploy to EC2') {
-//             steps {
-//                 echo "Deploying to EC2 instance: ${DEPLOY_SERVER_IP}"
-//                 sshagent(credentials: ['ec2-ssh-key']) {
-//                     sh """
-//                         ssh -o StrictHostKeyChecking=no ubuntu@${DEPLOY_SERVER_IP} << 'EOF'
-//                             set -e
-//                             echo "--- Connected to deployment server ---"
-//                             if [ ! -d "${APP_DIR}" ]; then
-//                                 echo "Cloning repository..."
-//                                 git clone ${REPO_URL} ${APP_DIR}
-//                             else
-//                                 echo "Repository exists. Pulling latest changes..."
-//                                 cd ${APP_DIR}
-//                                 git fetch origin
-//                                 git reset --hard origin/main
-//                             fi
-//                             cd ${APP_DIR}
-//                             echo "--- Checking disk space ---"
-//                             df -h
-//                             echo "--- Stopping and removing existing containers ---"
-//                             docker-compose down || true
-//                             echo "--- Building and starting containers ---"
-//                             docker-compose build --no-cache
-//                             docker-compose up -d
-//                             echo "--- Cleaning up old images ---"
-//                             docker image prune -f --filter "until=48h"
-//                             echo "--- Deployment successful ---"
-//                             docker ps -a
-//                         EOF
-//                     """
-//                 }
-//             }
-//         }
-//     }
-// }
-
-
-
 pipeline {
     agent any
+
+    triggers {
+        githubPush()  // This triggers the pipeline when GitHub webhook is received
+    }
 
     environment {
         DEPLOY_SERVER_IP = "3.110.114.163"
