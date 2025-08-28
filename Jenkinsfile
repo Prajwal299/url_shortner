@@ -187,11 +187,13 @@
 
 pipeline {
     agent any
+
     environment {
         DEPLOY_SERVER_IP = "3.110.114.163"
-        APP_DIR = "/home/ubuntu/url_shortner"
         REPO_URL = "https://github.com/Prajwal299/url_shortner.git"
+        APP_DIR = "/home/ubuntu/url_shortner"
     }
+
     stages {
         stage('Checkout') {
             steps {
@@ -199,24 +201,25 @@ pipeline {
                 checkout scm
             }
         }
+
         stage('Deploy to EC2') {
             steps {
-                echo "Deploying to EC2 instance: \${DEPLOY_SERVER_IP}"
+                echo "Deploying to EC2 instance: ${DEPLOY_SERVER_IP}"
                 sshagent(credentials: ['ec2-ssh-key']) {
                     sh """
-                        ssh -o StrictHostKeyChecking=no -v ubuntu@\${DEPLOY_SERVER_IP} '
+                        ssh -o StrictHostKeyChecking=no ubuntu@${DEPLOY_SERVER_IP} << 'EOF'
                             set -e
                             echo "--- Connected to deployment server ---"
-                            if [ ! -d "\${APP_DIR}" ]; then
+                            if [ ! -d "${APP_DIR}" ]; then
                                 echo "Cloning repository..."
-                                git clone \${REPO_URL} \${APP_DIR}
+                                git clone ${REPO_URL} ${APP_DIR}
                             else
                                 echo "Repository exists. Pulling latest changes..."
-                                cd \${APP_DIR}
+                                cd ${APP_DIR}
                                 git fetch origin
                                 git reset --hard origin/main
                             fi
-                            cd \${APP_DIR}
+                            cd ${APP_DIR}
                             echo "--- Checking disk space ---"
                             df -h
                             echo "--- Stopping and removing existing containers ---"
@@ -228,73 +231,10 @@ pipeline {
                             docker image prune -f --filter "until=48h"
                             echo "--- Deployment successful ---"
                             docker ps -a
-                        '
+                        EOF
                     """
                 }
             }
-        }
-        stage('Verify Deployment') {
-            steps {
-                echo "Verifying deployment health"
-                sshagent(credentials: ['ec2-ssh-key']) {
-                    sh """
-                        ssh -o StrictHostKeyChecking=no ubuntu@\${DEPLOY_SERVER_IP} '
-                            cd \${APP_DIR}
-                            echo "--- Checking container status ---"
-                            docker ps -a
-                            echo "--- Checking API health ---"
-                            docker exec url_shortner_api_1 curl -f http://localhost:5000/health || exit 1
-                            echo "--- Checking frontend ---"
-                            curl -f http://localhost:80 || exit 1
-                            echo "--- Checking MySQL ---"
-                            docker exec url_shortner_mysql_1 mysqladmin ping -h localhost -uadmin -proot || exit 1
-                        '
-                    """
-                }
-            }
-        }
-    }
-    post {
-        always {
-            echo "Pipeline finished."
-            sh '''
-            echo "🧹 Cleaning up on Jenkins node..."
-            docker image prune -f --filter "until=48h" || true
-            docker container prune -f || true
-            echo "=== Final System Status ==="
-            docker system df
-            '''
-        }
-        success {
-            echo """
-            ✅ 🎉 DEPLOYMENT SUCCESSFUL! 🎉 ✅
-            📋 What happened:
-            • Pulled latest code from \${REPO_URL}
-            • Removed old containers on \${DEPLOY_SERVER_IP}
-            • Built and started API, frontend, and MySQL containers
-            • Application is running with build number: \${BUILD_NUMBER}
-            🔗 Access your application:
-            • Frontend: http://\${DEPLOY_SERVER_IP}
-            • API: http://\${DEPLOY_SERVER_IP}:5001
-            • MySQL: \${DEPLOY_SERVER_IP}:3306
-            📊 Verify status:
-            ssh -i ~/.ssh/my-aws-key.pem ubuntu@\${DEPLOY_SERVER_IP} 'docker ps -a'
-            """
-        }
-        failure {
-            echo """
-            ❌ Deployment failed!
-            🔍 Common issues to check:
-            • SSH access to \${DEPLOY_SERVER_IP} (verify ec2-ssh-key)
-            • GitHub repository access or webhook configuration
-            • Docker build issues (check Dockerfile, disk space: df -h)
-            • Port conflicts on \${DEPLOY_SERVER_IP} (ports 5001, 80, 3306)
-            • MySQL connection (check logs: docker logs url_shortner_api_1)
-            🔧 Debug commands:
-            ssh -i ~/.ssh/my-aws-key.pem ubuntu@\${DEPLOY_SERVER_IP} 'docker logs url_shortner_api_1'
-            ssh -i ~/.ssh/my-aws-key.pem ubuntu@\${DEPLOY_SERVER_IP} 'docker logs url_shortner_frontend_1'
-            ssh -i ~/.ssh/my-aws-key.pem ubuntu@\${DEPLOY_SERVER_IP} 'docker logs url_shortner_mysql_1'
-            """
         }
     }
 }
