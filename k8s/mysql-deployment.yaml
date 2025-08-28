@@ -1,22 +1,50 @@
+# Secret for sensitive MySQL data (passwords should be in secrets, not configmaps)
 apiVersion: v1
 kind: Secret
 metadata:
   name: mysql-secret
-  namespace: url-shortener
+  namespace: url_shortener
 type: Opaque
 data:
-  MYSQL_USER: YWRtaW4=  # base64 'admin'
-  MYSQL_PASSWORD: cm9vdA==  # base64 'root'
-  MYSQL_ROOT_PASSWORD: cm9vdA==
+  MYSQL_ROOT_PASSWORD: cm9vdA==  # base64 encoded 'root'
+  MYSQL_PASSWORD: cm9vdA==       # base64 encoded 'root'
 ---
+# ConfigMap for non-sensitive MySQL configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-config
+  namespace: url_shortener
+data:
+  MYSQL_DATABASE: url_shortener
+  MYSQL_USER: admin
+---
+# PersistentVolumeClaim for MySQL data storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: url_shortener
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+---
+# MySQL Deployment
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
   name: mysql
-  namespace: url-shortener
+  namespace: url_shortener
+  labels:
+    app: mysql
 spec:
-  serviceName: mysql
   replicas: 1
+  strategy:
+    type: Recreate  # Important for databases with persistent storage
   selector:
     matchLabels:
       app: mysql
@@ -28,68 +56,101 @@ spec:
       containers:
       - name: mysql
         image: mysql:8.0
+        ports:
+        - containerPort: 3306
+          name: mysql
         env:
-        - name: MYSQL_DATABASE
-          value: urlshortener
-        - name: MYSQL_USER
+        - name: MYSQL_ROOT_PASSWORD
           valueFrom:
             secretKeyRef:
               name: mysql-secret
+              key: MYSQL_ROOT_PASSWORD
+        - name: MYSQL_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: mysql-config
+              key: MYSQL_DATABASE
+        - name: MYSQL_USER
+          valueFrom:
+            configMapKeyRef:
+              name: mysql-config
               key: MYSQL_USER
         - name: MYSQL_PASSWORD
           valueFrom:
             secretKeyRef:
               name: mysql-secret
               key: MYSQL_PASSWORD
-        - name: MYSQL_ROOT_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: mysql-secret
-              key: MYSQL_ROOT_PASSWORD
         volumeMounts:
-        - name: data
+        - name: mysql-storage
           mountPath: /var/lib/mysql
-  volumeClaimTemplates:
-  - metadata:
-      name: data
-    spec:
-      accessModes: ["ReadWriteOnce"]
-      resources:
-        requests:
-          storage: 10Gi
+        # Health checks
+        livenessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+            - -h
+            - localhost
+            - -u
+            - root
+            - -p${MYSQL_ROOT_PASSWORD}
+          initialDelaySeconds: 30
+          timeoutSeconds: 5
+          periodSeconds: 30
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - mysql
+            - -h
+            - 127.0.0.1
+            - -u
+            - ${MYSQL_USER}
+            - -p${MYSQL_PASSWORD}
+            - -e
+            - "SELECT 1"
+          initialDelaySeconds: 10
+          timeoutSeconds: 5
+          periodSeconds: 10
+          successThreshold: 1
+          failureThreshold: 3
+        # Resource limits
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        # Security context
+        securityContext:
+          runAsNonRoot: false  # MySQL container runs as root
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+      # Pod security context
+      securityContext:
+        fsGroup: 999  # MySQL group ID
 ---
+# MySQL Service
 apiVersion: v1
 kind: Service
 metadata:
-  name: mysql
-  namespace: url-shortener
+  name: mysql-service
+  namespace: url_shortener
+  labels:
+    app: mysql
 spec:
-  ports:
-  - port: 3306
   selector:
     app: mysql
-  clusterIP: None  # Headless
----
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: mysql-pv
-spec:
-  capacity:
-    storage: 10Gi
-  accessModes:
-    - ReadWriteOnce
-  hostPath:
-    path: /mysql-data  # Mounted EBS on master
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: data-mysql-0  # Matches StatefulSet
-  namespace: url-shortener
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 10Gi
+  ports:
+  - name: mysql
+    port: 3306
+    targetPort: 3306
+    protocol: TCP
+  type: ClusterIP
+  # Session affinity to ensure connections go to the same pod
+  sessionAffinity: ClientIP

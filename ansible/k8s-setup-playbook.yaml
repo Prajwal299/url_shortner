@@ -1,0 +1,85 @@
+---
+- name: Setup Kubernetes for URL Shortener
+  hosts: all
+  become: yes
+  vars:
+    master_ip: "10.0.1.174"
+  tasks:
+    - name: Create directory for MySQL persistent volume
+      file:
+        path: /mnt/mysql-data
+        state: directory
+        mode: '0777'
+      when: inventory_hostname in groups['master']
+
+    - name: Install metrics-server for HPA
+      shell: |
+        kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+        kubectl patch deployment metrics-server -n kube-system --type='json' -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--kubelet-insecure-tls"}]'
+      when: inventory_hostname in groups['master']
+      environment:
+        KUBECONFIG: /root/.kube/config
+      ignore_errors: yes
+
+    - name: Wait for metrics-server to be ready
+      shell: kubectl wait --for=condition=ready pod -l k8s-app=metrics-server -n kube-system --timeout=300s
+      when: inventory_hostname in groups['master']
+      environment:
+        KUBECONFIG: /root/.kube/config
+      ignore_errors: yes
+
+    - name: Create local registry for images (optional)
+      docker_container:
+        name: local-registry
+        image: registry:2
+        ports:
+          - "5000:5000"
+        restart_policy: always
+        state: started
+      when: inventory_hostname in groups['master']
+
+    - name: Allow insecure registries in Docker daemon
+      copy:
+        content: |
+          {
+            "insecure-registries" : ["{{ master_ip }}:5000", "localhost:5000"]
+          }
+        dest: /etc/docker/daemon.json
+        mode: '0644'
+      notify: restart docker
+
+    - name: Create StorageClass for local storage
+      shell: |
+        cat << EOF | kubectl apply -f -
+        apiVersion: storage.k8s.io/v1
+        kind: StorageClass
+        metadata:
+          name: local-storage
+        provisioner: kubernetes.io/no-provisioner
+        volumeBindingMode: WaitForFirstConsumer
+        EOF
+      when: inventory_hostname in groups['master']
+      environment:
+        KUBECONFIG: /root/.kube/config
+
+  handlers:
+    - name: restart docker
+      systemd:
+        name: docker
+        state: restarted
+
+- name: Copy and load Docker images to worker nodes
+  hosts: workers
+  become: yes
+  tasks:
+    - name: Check if images exist locally
+      shell: docker images url_shortner_api -q
+      register: api_image_check
+      ignore_errors: yes
+
+    - name: Load images if not available
+      shell: |
+        docker load < /home/ubuntu/url_shortner_api.tar
+        docker load < /home/ubuntu/url_shortner_frontend.tar
+      when: api_image_check.stdout == ""
+      ignore_errors: yes
