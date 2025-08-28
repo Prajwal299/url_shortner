@@ -54,6 +54,7 @@
 // }
 
 
+
 pipeline {
     agent any
 
@@ -74,7 +75,7 @@ pipeline {
         stage('Deploy to EC2') {
             steps {
                 echo "Deploying to EC2 instance: ${DEPLOY_SERVER_IP}"
-                sshagent(credentials: ['ubuntu']) {
+                sshagent(credentials: ['ec2-ssh-key']) {
                     sh """
                         ssh -o StrictHostKeyChecking=no ubuntu@${DEPLOY_SERVER_IP} << 'DEPLOY_EOF'
                             echo "--- Connected to deployment server ---"
