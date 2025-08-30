@@ -1,8 +1,10 @@
+---
+# k8s/frontend-deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: frontend
-  namespace: url_shortener
+  namespace: url-shortener
 spec:
   replicas: 2
   selector:
@@ -15,41 +17,29 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: url_shortener_frontend:latest
-        imagePullPolicy: Never  # Use local images
+        image: url_shortner_frontend:latest
+        imagePullPolicy: Never  # Use local images only
         ports:
         - containerPort: 80
-        livenessProbe:
-          httpGet:
-            path: /
-            port: 80
-          initialDelaySeconds: 10
-          timeoutSeconds: 5
-        readinessProbe:
-          httpGet:
-            path: /
-            port: 80
-          initialDelaySeconds: 5
-          timeoutSeconds: 1
         resources:
           requests:
-            cpu: 50m
-            memory: 64Mi
+            memory: "128Mi"
+            cpu: "50m"
           limits:
-            cpu: 200m
-            memory: 256Mi
+            memory: "256Mi"
+            cpu: "100m"
+
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: frontend-service
-  namespace: url_shortener
+  namespace: url-shortener
 spec:
   selector:
     app: frontend
   ports:
-  - protocol: TCP
-    port: 80
+  - port: 80
     targetPort: 80
-    nodePort: 30080
   type: NodePort
+  nodePort: 30080

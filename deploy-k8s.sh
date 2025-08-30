@@ -1,144 +1,214 @@
 #!/bin/bash
 
-set -e
+# complete-k8s-setup.sh - Complete setup for URL Shortener on Kubernetes
 
-echo "🚀 Starting Kubernetes deployment for URL Shortener"
+set -e
 
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Function to print colored output
-print_status() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
+print_status() { echo -e "${GREEN}[INFO]${NC} $1"; }
+print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
+print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+print_step() { echo -e "${BLUE}[STEP]${NC} $1"; }
 
-print_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
+echo "🚀 Complete Kubernetes Setup for URL Shortener"
+echo "=============================================="
 
-print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
+# Step 1: Pre-flight checks
+print_step "1. Performing pre-flight checks..."
 
-print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
-
-# Check if kubectl is available
 if ! command -v kubectl &> /dev/null; then
     print_error "kubectl is not installed or not in PATH"
     exit 1
 fi
 
-# Check if cluster is accessible
-if ! kubectl cluster-info &> /dev/null; then
-    print_error "Cannot connect to Kubernetes cluster"
+if ! command -v docker &> /dev/null; then
+    print_error "Docker is not installed or not in PATH"
     exit 1
 fi
 
-print_success "Connected to Kubernetes cluster"
-
-# Step 1: Build Docker images locally
-print_status "Building Docker images..."
-
-# Check if Dockerfiles exist
-if [[ ! -f "./app/Dockerfile" ]]; then
-    print_error "app/Dockerfile not found"
+if ! kubectl get nodes &>/dev/null; then
+    print_error "kubectl not configured properly or cluster not accessible"
     exit 1
 fi
 
-if [[ ! -f "./frontend/Dockerfile" ]]; then
-    print_error "frontend/Dockerfile not found"
+print_status "Pre-flight checks passed ✓"
+
+# Step 2: Stop existing Docker Compose services
+print_step "2. Stopping existing Docker Compose services..."
+if [ -f "docker-compose.yml" ]; then
+    docker-compose down || print_warning "Docker Compose services may not be running"
+    print_status "Docker Compose services stopped ✓"
+else
+    print_warning "docker-compose.yml not found, skipping..."
+fi
+
+# Step 3: Install metrics-server for HPA
+print_step "3. Installing metrics-server for HPA..."
+kubectl apply -f k8s/metrics-server.yaml
+print_status "Metrics-server deployed ✓"
+
+# Step 4: Build Docker images
+print_step "4. Building Docker images locally..."
+
+if [ ! -d "app" ]; then
+    print_error "app directory not found"
     exit 1
 fi
 
-# Build images
-docker build -t url_shortener-api:latest ./app
-docker build -t url_shortener-frontend:latest ./frontend
+if [ ! -d "frontend" ]; then
+    print_error "frontend directory not found"
+    exit 1
+fi
 
-print_success "Docker images built successfully"
+# Build API image
+print_status "Building API image..."
+docker build -t url_shortner_api:latest ./app/
 
-# Step 2: Create data directory for MySQL PV
-print_status "Creating MySQL data directory on master node..."
-sudo mkdir -p /mnt/mysql-data
-sudo chmod 777 /mnt/mysql-data
+# Build Frontend image
+print_status "Building Frontend image..."
+docker build -t url_shortner_frontend:latest ./frontend/
 
-print_success "MySQL data directory created"
+print_status "Docker images built successfully ✓"
 
-# Step 3: Apply Kubernetes manifests
-print_status "Applying Kubernetes manifests..."
+# Step 5: Load images into kind cluster (if using kind)
+print_step "5. Loading images into Kubernetes cluster..."
+
+# Check if using kind
+if kubectl config current-context | grep -q "kind"; then
+    CLUSTER_NAME=$(kubectl config current-context | sed 's/kind-//')
+    print_status "Detected kind cluster: $CLUSTER_NAME"
+    
+    kind load docker-image url_shortner_api:latest --name $CLUSTER_NAME
+    kind load docker-image url_shortner_frontend:latest --name $CLUSTER_NAME
+    print_status "Images loaded into kind cluster ✓"
+else
+    print_status "Not using kind cluster, images available locally ✓"
+fi
+
+# Step 6: Deploy to Kubernetes
+print_step "6. Deploying to Kubernetes..."
 
 # Create namespace
 kubectl apply -f k8s/namespace.yaml
-print_success "Namespace created"
+print_status "Namespace created ✓"
 
-# Apply MySQL deployment
+# Deploy MySQL
+print_status "Deploying MySQL database..."
 kubectl apply -f k8s/mysql-deployment.yaml
-print_success "MySQL deployment created"
 
 # Wait for MySQL to be ready
 print_status "Waiting for MySQL to be ready..."
-kubectl wait --for=condition=ready pod -l app=mysql -n url_shortener --timeout=300s
-print_success "MySQL is ready"
+kubectl wait --for=condition=available --timeout=300s deployment/mysql -n url-shortener
 
-# Apply API deployment
+# Deploy API
+print_status "Deploying API service..."
 kubectl apply -f k8s/api-deployment.yaml
-print_success "API deployment created"
 
-# Apply frontend deployment
+# Deploy Frontend
+print_status "Deploying Frontend service..."
 kubectl apply -f k8s/frontend-deployment.yaml
-print_success "Frontend deployment created"
 
-# Wait for API and frontend to be ready
-print_status "Waiting for API pods to be ready..."
-kubectl wait --for=condition=ready pod -l app=api -n url_shortener --timeout=300s
+# Wait for services to be ready
+print_status "Waiting for services to be ready..."
+kubectl wait --for=condition=available --timeout=300s deployment/api -n url-shortener
+kubectl wait --for=condition=available --timeout=300s deployment/frontend -n url-shortener
 
-print_status "Waiting for frontend pods to be ready..."
-kubectl wait --for=condition=ready pod -l app=frontend -n url_shortener --timeout=300s
+print_status "Core services deployed ✓"
 
-print_success "All applications are ready"
+# Step 7: Setup HPA
+print_step "7. Setting up Horizontal Pod Autoscaler..."
+
+# Wait for metrics-server to be ready
+print_status "Waiting for metrics-server to be ready..."
+kubectl wait --for=condition=available --timeout=300s deployment/metrics-server -n kube-system || print_warning "Metrics-server may still be starting"
 
 # Apply HPA
 kubectl apply -f k8s/hpa.yaml
-print_success "HPA configuration applied"
+print_status "HPA configured ✓"
 
-# Step 4: Display deployment status
-print_status "Deployment Summary:"
+# Step 8: Deploy monitoring stack
+print_step "8. Deploying monitoring stack..."
+
+# Deploy Prometheus
+kubectl apply -f k8s/prometheus/
+print_status "Prometheus deployed ✓"
+
+# Deploy Grafana
+kubectl apply -f k8s/grafana/
+print_status "Grafana deployed ✓"
+
+# Wait for monitoring stack
+print_status "Waiting for monitoring stack to be ready..."
+sleep 30  # Give some time for initial startup
+
+# Step 9: Display status and URLs
+print_step "9. Deployment complete! Getting status..."
+
+echo ""
+echo "📊 DEPLOYMENT STATUS"
 echo "===================="
 
-kubectl get all -n url_shortener
+print_status "Pods status:"
+kubectl get pods -n url-shortener
 
 echo ""
-print_status "Services:"
-kubectl get svc -n url_shortener
+print_status "Services status:"
+kubectl get services -n url-shortener
 
 echo ""
-print_status "HPA Status:"
-kubectl get hpa -n url_shortener
+print_status "HPA status:"
+kubectl get hpa -n url-shortener
 
-# Get node IP
-NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="ExternalIP")].address}')
-if [[ -z "$NODE_IP" ]]; then
-    NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+# Get access URLs
+NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+EXTERNAL_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="ExternalIP")].address}')
+
+if [ -n "$EXTERNAL_IP" ]; then
+    ACCESS_IP=$EXTERNAL_IP
+else
+    ACCESS_IP=$NODE_IP
 fi
 
 echo ""
-print_success "🎉 Deployment completed successfully!"
+echo "🌐 ACCESS URLS"
+echo "=============="
+echo "   Frontend:   http://$ACCESS_IP:30080"
+echo "   Prometheus: http://$ACCESS_IP:30090"
+echo "   Grafana:    http://$ACCESS_IP:30030"
+echo "   Grafana Login: admin/admin"
 echo ""
-echo "Access your application:"
-echo "Frontend: http://${NODE_IP}:30080"
-echo "API: http://${NODE_IP}:30081"
-echo ""
-echo "To monitor the deployment:"
-echo "kubectl get pods -n url_shortener -w"
-echo ""
-echo "To check logs:"
-echo "kubectl logs -l app=api -n url_shortener"
-echo "kubectl logs -l app=frontend -n url_shortener"
-echo "kubectl logs -l app=mysql -n url_shortener"
 
-print_status "Deployment script completed!"
+# Step 10: Provide useful commands
+echo "🛠️  USEFUL COMMANDS"
+echo "=================="
+echo "Monitor pods:           kubectl get pods -n url-shortener -w"
+echo "Check HPA:              kubectl get hpa -n url-shortener -w"
+echo "Scale API manually:     kubectl scale deployment api --replicas=5 -n url-shortener"
+echo "View API logs:          kubectl logs -f deployment/api -n url-shortener"
+echo "View frontend logs:     kubectl logs -f deployment/frontend -n url-shortener"
+echo "Test load (new terminal): kubectl apply -f k8s/load-test.yaml"
+echo "Stop load test:         kubectl delete pod load-test -n url-shortener"
+echo ""
+
+# Step 11: Test HPA setup
+print_step "10. Testing HPA setup..."
+echo ""
+print_status "Current HPA metrics:"
+kubectl top pods -n url-shortener || print_warning "Metrics not yet available (normal for new deployments)"
+
+echo ""
+print_status "🎉 Setup Complete!"
+echo ""
+print_warning "Note: It may take 2-3 minutes for all metrics to become available."
+print_warning "HPA scaling decisions are made every 30 seconds based on average CPU usage."
+echo ""
+print_status "To test auto-scaling:"
+echo "1. Apply load test: kubectl apply -f k8s/load-test.yaml"  
+echo "2. Watch HPA: kubectl get hpa -n url-shortener -w"
+echo "3. Monitor scaling: kubectl get pods -n url-shortener -w"

@@ -1,6 +1,4 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: url_shortener
-  labels:
-    name: url_shortener
+  name: url-shortener
