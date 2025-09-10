@@ -3,13 +3,18 @@ FROM nginx:1.29.1
 # Remove default config
 RUN rm /etc/nginx/conf.d/default.conf
 
-# Copy custom Nginx config
+# Copy your custom config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Copy all static files (HTML, CSS, JS, images)
-COPY . /usr/share/nginx/html/
+# Copy website files
+COPY index.html /usr/share/nginx/html/
+COPY script.js /usr/share/nginx/html/
+COPY custom.css /usr/share/nginx/html/
 
-# Fix permissions
+# Remove accidental extra files
+RUN rm -f /usr/share/nginx/html/script.jsO
+
+# Set permissions
 RUN chmod -R 755 /usr/share/nginx/html
 
 # Expose port
