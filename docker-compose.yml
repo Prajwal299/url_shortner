@@ -94,7 +94,6 @@
 
 
 version: '3.8'
-
 services:
   mysql:
     image: mysql:8.0
@@ -117,10 +116,10 @@ services:
       dockerfile: Dockerfile
     container_name: url_shortner_api_1
     environment:
-      - DB_HOST=mysql
-      - DB_USER=admin
-      - DB_PASS=root
-      - DB_NAME=urlshortener
+      DB_HOST: mysql
+      DB_USER: admin
+      DB_PASS: root
+      DB_NAME: urlshortener
     ports:
       - "5000:5000"
     depends_on:
