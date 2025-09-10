@@ -6,14 +6,13 @@ RUN rm /etc/nginx/conf.d/default.conf
 # Copy custom Nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Copy website files
-COPY index.html /usr/share/nginx/html/
-COPY script.js /usr/share/nginx/html/
+# Copy all static files (HTML, CSS, JS, images)
+COPY . /usr/share/nginx/html/
 
 # Fix permissions
 RUN chmod -R 755 /usr/share/nginx/html
 
-# Expose port 80
+# Expose port
 EXPOSE 80
 
 # Start nginx
