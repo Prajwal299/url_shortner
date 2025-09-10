@@ -4,11 +4,18 @@ import hashlib
 import os
 import logging
 import time
+from flask_cors import CORS
 
 app = Flask(__name__)
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+CORS(app, resources={
+    r"/*": {
+        "origins": ["http://3.110.114.163", "http://localhost", "http://127.0.0.1"]
+    }
+})
 
 def get_db_connection():
     try:

@@ -63,7 +63,7 @@ services:
       - DB_PASS=root
       - DB_NAME=urlshortener
     ports:
-      - "5001:5000"
+      - "5000:5000"
     depends_on:
       - mysql
     networks:
