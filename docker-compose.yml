@@ -1,9 +1,46 @@
+# # version: '3.8'
+# # services:
+# #   mysql:
+# #     image: mysql:8.0
+# #     volumes:
+# #       - /mysql-data:/var/lib/mysql
+# #     environment:
+# #       MYSQL_ROOT_PASSWORD: root
+# #       MYSQL_DATABASE: urlshortener
+# #       MYSQL_USER: admin
+# #       MYSQL_PASSWORD: root
+# #     ports:
+# #       - "3306:3306"
+# #     networks:
+# #       - app-network
+# #   api:
+# #     image: 934556830376.dkr.ecr.ap-south-1.amazonaws.com/url-shortener-api:latest
+# #     environment:
+# #       DB_HOST: mysql
+# #       DB_USER: admin
+# #       DB_PASS: root
+# #       DB_NAME: urlshortener
+# #     ports:
+# #       - "5000:5000"
+# #     depends_on:
+# #       - mysql
+# #     networks:
+# #       - app-network
+# #   frontend:
+# #     image: 934556830376.dkr.ecr.ap-south-1.amazonaws.com/url-shortener-frontend:latest
+# #     ports:
+# #       - "80:80"
+# #     networks:
+# #       - app-network
+# # networks:
+# #   app-network:
+# #     driver: bridge
+
 # version: '3.8'
 # services:
 #   mysql:
 #     image: mysql:8.0
-#     volumes:
-#       - /mysql-data:/var/lib/mysql
+#     container_name: url_shortner_mysql_1
 #     environment:
 #       MYSQL_ROOT_PASSWORD: root
 #       MYSQL_DATABASE: urlshortener
@@ -11,32 +48,53 @@
 #       MYSQL_PASSWORD: root
 #     ports:
 #       - "3306:3306"
+#     volumes:
+#       - mysql-data:/var/lib/mysql
 #     networks:
-#       - app-network
+#       - url_shortner_default
 #   api:
-#     image: 934556830376.dkr.ecr.ap-south-1.amazonaws.com/url-shortener-api:latest
+#     build:
+#       context: ./app
+#       dockerfile: Dockerfile
+#     container_name: url_shortner_api_1
 #     environment:
-#       DB_HOST: mysql
-#       DB_USER: admin
-#       DB_PASS: root
-#       DB_NAME: urlshortener
+#       - DB_HOST=mysql
+#       - DB_USER=admin
+#       - DB_PASS=root
+#       - DB_NAME=urlshortener
 #     ports:
 #       - "5000:5000"
 #     depends_on:
 #       - mysql
 #     networks:
-#       - app-network
+#       - url_shortner_default
 #   frontend:
-#     image: 934556830376.dkr.ecr.ap-south-1.amazonaws.com/url-shortener-frontend:latest
+#     build:
+#       context: ./frontend
+#       dockerfile: Dockerfile
+#     container_name: url_shortner_frontend_1
 #     ports:
 #       - "80:80"
 #     networks:
-#       - app-network
+#       - url_shortner_default
 # networks:
-#   app-network:
+#   url_shortner_default:
 #     driver: bridge
+# volumes:
+#   mysql-data:
+
+
+
+
+
+
+
+
+
+
 
 version: '3.8'
+
 services:
   mysql:
     image: mysql:8.0
@@ -52,6 +110,7 @@ services:
       - mysql-data:/var/lib/mysql
     networks:
       - url_shortner_default
+
   api:
     build:
       context: ./app
@@ -68,6 +127,7 @@ services:
       - mysql
     networks:
       - url_shortner_default
+
   frontend:
     build:
       context: ./frontend
@@ -75,10 +135,14 @@ services:
     container_name: url_shortner_frontend_1
     ports:
       - "80:80"
+    depends_on:
+      - api
     networks:
       - url_shortner_default
+
 networks:
   url_shortner_default:
     driver: bridge
+
 volumes:
   mysql-data:
