@@ -85,5 +85,19 @@ def redirect_url(short):
         logger.error(f"Error in redirect_url: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/health', methods=['GET'])
+def health():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1")
+        cursor.close()
+        conn.close()
+        return jsonify({"status": "healthy"}), 200
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return jsonify({"status": "unhealthy"}), 500
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
